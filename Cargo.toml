@@ -1,0 +1,34 @@
+[workspace]
+members = ["bottle_core", "bottle_download", "bottle_library", "bottle_panda", "bottle_pixiv", "bottle_server", "bottle_twitter", "bottle_util", "bottle_yandere", "panda_client", "pixiv_client", "twitter_client", "yandere_client"]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1.0.86"
+async-stream = "0.3.5"
+async-trait = "0.1.73"
+axum = "0.6.20"
+chrono = "0.4.26"
+diesel = { version = "2.1.0", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
+dotenvy = "0.15.7"
+futures = "0.3.28"
+image = "0.24.7"
+itertools = "0.11.0"
+jpeg-encoder = { version = "0.6.0", features = ["simd"] }
+lazy_static = "1.4.0"
+libsqlite3-sys = { version = "0.26.0", features = ["bundled"] }
+md5 = "0.7.0"
+phf = { version = "0.11.2", features = ["macros"] }
+reqwest = { version = "0.11.18", features = ["cookies", "json"] }
+scraper = "0.17.1"
+serde = { version = "1.0.180", features = ["derive"] }
+serde_json = "1.0.104"
+serde_path_to_error = "0.1.14"
+serde_with = { version = "3.1.0", features = ["chrono"] }
+thiserror = "1.0.44"
+tokio = { version = "1.37.0" }
+tokio-retry = "0.3.0"
+tower-http = { version = "0.4.4", features = ["trace", "fs"] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = "2.4.0"
+urlencoding = "2.1.3"

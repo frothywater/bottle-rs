@@ -1,0 +1,14 @@
+[package]
+name = "bottle_library"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bottle_core = { path = "../bottle_core" }
+bottle_download = { path = "../bottle_download" }
+bottle_util = { path = "../bottle_util" }
+chrono = { workspace = true }
+diesel = { workspace = true }
+itertools = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
