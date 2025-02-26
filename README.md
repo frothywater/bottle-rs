@@ -48,7 +48,7 @@ IMAGE_DIR=/path/to/images
 CLIENT_LOG_DIR=/path/to/logs
 ```
 
-### Dependencies
+## Dependencies
 - [`axum`](https://docs.rs/axum/latest/axum/): Web server framework for handling HTTP requests.
 - [`diesel`](https://diesel.rs): ORM for SQLite database interactions.
 - [`tokio`](https://tokio.rs): Async runtime for concurrent operations and the background queue.
