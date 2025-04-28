@@ -21,4 +21,14 @@ pub enum Error {
     UrlError(#[from] url::ParseError),
     #[error("Parsing error: {0}")]
     ParsingError(#[from] bottle_util::ParsingError),
+    #[error("Unable to parse int: {0}")]
+    ParseIntError(#[from] std::num::ParseIntError),
+    #[error("Unable to perform regex: {0}")]
+    RegexError(#[from] regex::Error),
+    #[error("Unable to decode Base64: {0}")]
+    Base64DecodeError(#[from] base64::DecodeError),
+    #[error("Invalid system time: {0}")]
+    SystemTimeError(#[from] std::time::SystemTimeError),
+    #[error("Unable to get transaction ID: {0}")]
+    TransactionIDError(String),
 }

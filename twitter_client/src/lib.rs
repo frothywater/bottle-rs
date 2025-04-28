@@ -4,6 +4,7 @@ mod response;
 mod result;
 #[cfg(test)]
 mod test;
+mod transaction;
 mod util;
 
 use reqwest::{header, Client, Response, Url};
@@ -14,6 +15,7 @@ use std::str::FromStr;
 use consts::*;
 use response::{AccountResponse, GraphqlResponse};
 pub use result::*;
+pub use transaction::Transaction;
 
 pub use crate::error::Error;
 use crate::error::Result;
@@ -90,69 +92,115 @@ impl TwitterClient {
         })
     }
 
+    pub fn default_reqwest_client() -> Result<Client> {
+        let mut headers = header::HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, header::HeaderValue::from_static(BEARER_TOKEN));
+        headers.insert("x-twitter-active-user", header::HeaderValue::from_static("yes"));
+        headers.insert("x-twitter-client-language", header::HeaderValue::from_static("en"));
+        headers.insert("x-twitter-auth-type", header::HeaderValue::from_static("OAuth2Session"));
+
+        Ok(Client::builder()
+            .user_agent(USER_AGENT)
+            .default_headers(headers)
+            .build()?)
+    }
+
     pub async fn accounts(&self) -> Result<Vec<Account>> {
         let response: AccountResponse = self.rest_get("/account/multi/list.json").await?;
         Ok(response.users)
     }
 
-    pub async fn user_by_id(&self, user_id: u64) -> Result<User> {
-        self.graphql_get("UserByRestId", [("userId", user_id)]).await
+    pub async fn user_by_id(&self, user_id: u64, transaction: Option<&Transaction>) -> Result<User> {
+        self.graphql_get("UserByRestId", [("userId", user_id)], transaction)
+            .await
     }
 
-    pub async fn users_by_ids(&self, user_ids: &[u64]) -> Result<Vec<User>> {
-        self.graphql_get("UsersByRestIds", [("userIds", user_ids)]).await
+    pub async fn users_by_ids(&self, user_ids: &[u64], transaction: Option<&Transaction>) -> Result<Vec<User>> {
+        self.graphql_get("UsersByRestIds", [("userIds", user_ids)], transaction)
+            .await
     }
 
-    pub async fn tweet_by_id(&self, tweet_id: u64) -> Result<Tweet> {
-        self.graphql_get("TweetResultByRestId", [("tweetId", tweet_id)]).await
+    pub async fn tweet_by_id(&self, tweet_id: u64, transaction: Option<&Transaction>) -> Result<Tweet> {
+        self.graphql_get("TweetResultByRestId", [("tweetId", tweet_id)], transaction)
+            .await
     }
 
-    pub async fn user_tweets(&self, user_id: u64, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn user_tweets(
+        &self,
+        user_id: u64,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> =
             [("userId", user_id.into()), ("count", LIST_API_MAX_COUNT.into())].to_vec();
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("UserTweets", variables).await
+        self.graphql_get("UserTweets", variables, transaction).await
     }
 
-    pub async fn user_media(&self, user_id: u64, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn user_media(
+        &self,
+        user_id: u64,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> =
             [("userId", user_id.into()), ("count", LIST_API_MAX_COUNT.into())].to_vec();
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("UserMedia", variables).await
+        self.graphql_get("UserMedia", variables, transaction).await
     }
 
-    pub async fn likes(&self, user_id: u64, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn likes(
+        &self,
+        user_id: u64,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> =
             [("userId", user_id.into()), ("count", LIST_API_MAX_COUNT.into())].to_vec();
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("Likes", variables).await
+        self.graphql_get("Likes", variables, transaction).await
     }
 
-    pub async fn followers(&self, user_id: u64, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn followers(
+        &self,
+        user_id: u64,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> =
             [("userId", user_id.into()), ("count", LIST_API_MAX_COUNT.into())].to_vec();
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("Followers", variables).await
+        self.graphql_get("Followers", variables, transaction).await
     }
 
-    pub async fn following(&self, user_id: u64, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn following(
+        &self,
+        user_id: u64,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> =
             [("userId", user_id.into()), ("count", LIST_API_MAX_COUNT.into())].to_vec();
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("Following", variables).await
+        self.graphql_get("Following", variables, transaction).await
     }
 
-    pub async fn search(&self, query: &str, cursor: Option<&str>) -> Result<TimelineResult> {
+    pub async fn search(
+        &self,
+        query: &str,
+        cursor: Option<&str>,
+        transaction: Option<&Transaction>,
+    ) -> Result<TimelineResult> {
         let mut variables: Vec<(&str, Value)> = [
             ("rawQuery", query.into()),
             ("count", SEARCH_API_MAX_COUNT.into()),
@@ -163,7 +211,7 @@ impl TwitterClient {
         if let Some(cursor) = cursor {
             variables.push(("cursor", cursor.into()));
         }
-        self.graphql_get("SearchTimeline", variables).await
+        self.graphql_get("SearchTimeline", variables, transaction).await
     }
 }
 
@@ -182,7 +230,7 @@ impl TwitterClient {
         serde_json::from_str(&content).map_err(|e| e.into())
     }
 
-    async fn graphql_get<I, V, R>(&self, endpoint: &str, variables: I) -> Result<R>
+    async fn graphql_get<I, V, R>(&self, endpoint: &str, variables: I, transaction: Option<&Transaction>) -> Result<R>
     where
         I: IntoIterator<Item = (&'static str, V)>,
         V: Into<Value>,
@@ -200,7 +248,20 @@ impl TwitterClient {
 
         let base_url = format!("{}/{}/{}", GRAPHQL_API, qid, endpoint);
         let url = Url::parse_with_params(&base_url, &graphql_params)?;
-        let response: Response = self.client.get(url).send().await?;
+
+        // Generate x-client-transaction-id given method and path
+        let mut request = self.client.get(url.clone());
+        if let Some(transaction) = transaction {
+            let path = url.path();
+            let transaction_id = transaction.generate_id("GET", path)?;
+            tracing::info!(
+                "Twitter GraphQL request: path={}, x-client-transaction-id={}",
+                path,
+                transaction_id
+            );
+            request = request.header("x-client-transaction-id", transaction_id);
+        }
+        let response: Response = request.send().await?;
 
         let status_error = response.error_for_status_ref().err();
         let content = response.text().await?;
