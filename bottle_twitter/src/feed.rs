@@ -1,10 +1,13 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use tokio::sync::RwLock;
 
 use bottle_core::{feed::*, Error, Result};
-use twitter_client::{SessionCookie, TimelineResult, TwitterClient};
+use twitter_client::{SessionCookie, TimelineResult, Transaction, TwitterClient};
 
 use crate::community::TwitterAccount;
 use crate::{group, model, util};
@@ -20,10 +23,11 @@ pub enum TwitterFeedParams {
     Search { query: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TwitterFetchContext {
     pub(crate) cursor: Option<String>,
     pub(crate) direction: Direction,
+    pub transaction: Option<Arc<RwLock<Option<Transaction>>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,7 +353,11 @@ impl Feed for TwitterFeed {
             _ if self.reached_end => Direction::Forward,
             _ => Direction::Backward,
         };
-        Ok(TwitterFetchContext { cursor, direction })
+        Ok(TwitterFetchContext {
+            cursor,
+            direction,
+            transaction: None,
+        })
     }
 
     async fn fetch(&self, ctx: &mut Self::FetchContext, auth: Option<&Self::Auth>) -> Result<Self::FetchResult> {
@@ -357,11 +365,37 @@ impl Feed for TwitterFeed {
             return Err(Error::NotLoggedIn("Twitter feed needs an account".to_string()));
         };
         let client = TwitterClient::new(auth.clone()).map_err(anyhow::Error::from)?;
+
+        // Generate x-client-transaction-id if not set.
+        let transaction = if let Some(ref transaction_lock) = ctx.transaction {
+            let transaction_lock = transaction_lock.clone();
+            let mut transaction = transaction_lock.write().await;
+
+            match transaction.as_ref() {
+                None => {
+                    let default_client = TwitterClient::default_reqwest_client().map_err(anyhow::Error::from)?;
+                    let new_transaction = Transaction::new(&default_client).await.map_err(anyhow::Error::from)?;
+                    tracing::info!("Fetch Twitter client-transaction: {:?}", new_transaction);
+
+                    *transaction = Some(new_transaction.clone());
+                    new_transaction
+                }
+                Some(transaction) => transaction.clone(),
+            }
+        } else {
+            let default_client = TwitterClient::default_reqwest_client().map_err(anyhow::Error::from)?;
+            let new_transaction = Transaction::new(&default_client).await.map_err(anyhow::Error::from)?;
+            tracing::info!("Fetch Twitter client-transaction: {:?}", new_transaction);
+            new_transaction
+        };
+
         let cursor = ctx.cursor.as_deref();
         let result = match self.params {
-            TwitterFeedParams::Likes { user_id } => client.likes(user_id as u64, cursor).await,
-            TwitterFeedParams::Posts { user_id } => client.user_tweets(user_id as u64, cursor).await,
-            TwitterFeedParams::Search { ref query } => client.search(query, cursor).await,
+            TwitterFeedParams::Likes { user_id } => client.likes(user_id as u64, cursor, Some(&transaction)).await,
+            TwitterFeedParams::Posts { user_id } => {
+                client.user_tweets(user_id as u64, cursor, Some(&transaction)).await
+            }
+            TwitterFeedParams::Search { ref query } => client.search(query, cursor, Some(&transaction)).await,
             _ => todo!(),
         }
         .map_err(anyhow::Error::from)?;

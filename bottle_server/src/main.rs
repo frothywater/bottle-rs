@@ -25,7 +25,7 @@ use bottle_pixiv::PixivCache;
 use bottle_twitter::TwitterCache;
 use bottle_yandere::YandereCache;
 
-use crate::{state::AppState, util::FeedIdentifier};
+use crate::{background_job::FeedUpdateMessage, state::AppState};
 
 #[tokio::main]
 async fn main() {
@@ -72,7 +72,7 @@ async fn main() {
     // 5. Initialize background jobs
     let feed_update_state_sender_map = Arc::new(RwLock::new(HashMap::new()));
     let feed_update_state_map = Arc::new(RwLock::new(HashMap::new()));
-    let feed_update_queue = |community: &str| -> (String, mpsc::UnboundedSender<FeedIdentifier>) {
+    let feed_update_queue = |community: &str| -> (String, mpsc::UnboundedSender<FeedUpdateMessage>) {
         (
             community.to_string(),
             background_job::listen_feed_update(pool.clone(), feed_update_state_sender_map.clone()),
@@ -96,6 +96,7 @@ async fn main() {
     let panda_gallery_title_map = Arc::new(RwLock::new(HashMap::new()));
 
     // 6. Setup state and router
+    let twitter_transaction = Arc::new(RwLock::new(None));
     let app_state = AppState {
         pool,
         twitter_cache,
@@ -111,6 +112,7 @@ async fn main() {
         panda_download_state_sender_map,
         panda_download_state_map,
         panda_gallery_title_map,
+        twitter_transaction,
     };
 
     let app = Router::new()

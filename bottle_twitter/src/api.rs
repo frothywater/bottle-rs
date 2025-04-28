@@ -1,4 +1,8 @@
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
 use bottle_core::{feed::*, Database, Result};
+use twitter_client::Transaction;
 
 use crate::cache::TwitterCache;
 use crate::community::TwitterAccount;
@@ -26,6 +30,7 @@ pub async fn fetch_posts<'a>(
     db: Database<'a>,
     cache: &'a mut TwitterCache,
     request: &EndpointRequest<TwitterFeedParams>,
+    transaction: Arc<RwLock<Option<Transaction>>>,
 ) -> Result<EndpointResponse> {
     use itertools::Itertools;
 
@@ -35,6 +40,7 @@ pub async fn fetch_posts<'a>(
     let mut ctx = TwitterFetchContext {
         cursor: request.offset.clone(),
         direction: Direction::Backward,
+        transaction: Some(transaction),
     };
     let result = feed.fetch(&mut ctx, auth.as_ref()).await?;
 

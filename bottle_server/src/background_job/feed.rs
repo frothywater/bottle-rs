@@ -8,6 +8,7 @@ use tokio::{
 };
 
 use bottle_core::feed::SaveResult;
+use twitter_client::Transaction;
 
 use crate::{
     error::Result,
@@ -16,6 +17,11 @@ use crate::{
 };
 
 use super::{entity::GeneralJobState, util::DEFAULT_DELAY_MS};
+
+pub struct FeedUpdateMessage {
+    pub feed_id: FeedIdentifier,
+    pub twitter_transaction: Arc<RwLock<Option<Transaction>>>,
+}
 
 #[derive(Debug, Clone)]
 pub enum FeedUpdateJobState {
@@ -67,7 +73,7 @@ impl FeedUpdateJobStateResponse {
     }
 }
 
-pub type FeedUpdateJobQueue = mpsc::UnboundedSender<FeedIdentifier>;
+pub type FeedUpdateJobQueue = mpsc::UnboundedSender<FeedUpdateMessage>;
 pub type FeedUpdateJobStateSender = watch::Sender<FeedUpdateJobState>;
 pub type FeedUpdateJobStateReceiver = watch::Receiver<FeedUpdateJobState>;
 pub type FeedUpdateJobStateSenderMap = Arc<RwLock<HashMap<FeedIdentifier, FeedUpdateJobStateSender>>>;
@@ -112,11 +118,16 @@ pub async fn send_feed_update(app_state: &AppState, id: FeedIdentifier) -> Resul
             .await
             .insert(id.clone(), state_receiver);
     }
+
+    let msg = FeedUpdateMessage {
+        feed_id: id.clone(),
+        twitter_transaction: app_state.twitter_transaction.clone(),
+    };
     app_state
         .feed_update_queues
         .get(&id.community)
         .expect("community not found")
-        .send(id)?;
+        .send(msg)?;
 
     Ok(true)
 }
@@ -125,21 +136,22 @@ pub async fn send_feed_update(app_state: &AppState, id: FeedIdentifier) -> Resul
 pub fn listen_feed_update(pool: DatabasePool, state_sender_map: FeedUpdateJobStateSenderMap) -> FeedUpdateJobQueue {
     // (1) MPSC unbounded channel: job queue
     // Allow only one job per community to avoid rate limiting
-    let (job_sender, mut job_receiver) = mpsc::unbounded_channel::<FeedIdentifier>();
+    let (job_sender, mut job_receiver) = mpsc::unbounded_channel::<FeedUpdateMessage>();
 
     task::spawn(async move {
-        while let Some(id) = job_receiver.recv().await {
+        while let Some(msg) = job_receiver.recv().await {
+            let feed_id = msg.feed_id.clone();
             let state_sender = state_sender_map
                 .read()
                 .await
-                .get(&id)
+                .get(&feed_id)
                 .expect("job state sender not found")
                 .clone();
 
-            let result = update_feed(pool.clone(), &id, state_sender.clone(), DEFAULT_DELAY_MS).await;
+            let result = update_feed(pool.clone(), msg, state_sender.clone(), DEFAULT_DELAY_MS).await;
 
             if let Err(e) = result {
-                tracing::error!("Feed update job failed: {}. {}", id, e);
+                tracing::error!("Feed update job failed: {}. {}", feed_id, e);
                 let _ = state_sender.send(FeedUpdateJobState::Failed { error: e.to_string() });
             }
         }
@@ -150,28 +162,28 @@ pub fn listen_feed_update(pool: DatabasePool, state_sender_map: FeedUpdateJobSta
 
 async fn update_feed(
     pool: DatabasePool,
-    id: &FeedIdentifier,
+    msg: FeedUpdateMessage,
     state_sender: FeedUpdateJobStateSender,
     delay_ms: u64,
 ) -> Result<()> {
     // 1. Prepare the feed
     let (feed, mut context) = {
         let db = &mut pool.get().expect("cannot access database");
-        let feed = FeedWrapper::from_id(db, id)?;
+        let feed = FeedWrapper::from_id(db, &msg.feed_id)?;
 
         // 2. Handle before update
         feed.handle_before_update(db)?;
 
         // 3. Refresh the account if necessary
         feed.refresh_account(db).await?;
-        let context = feed.get_context(db)?;
+        let context = feed.get_context(db, &msg)?;
         (feed, context)
     };
 
     // 4. Fetch and save the feed
     let mut fetched = 0;
     let mut results = Vec::new();
-    tracing::info!("Feed update job started: {}", id);
+    tracing::info!("Feed update job started: {}", msg.feed_id);
     loop {
         let (result, new_context) =
             util::retry(|| util::timeout(update_feed_inner(pool.clone(), &feed, &context))).await?;
@@ -197,7 +209,7 @@ async fn update_feed(
         feed.handle_after_update(db, results.iter())?;
     }
 
-    tracing::info!("Feed update job done: {}. Updated {} posts", id, fetched);
+    tracing::info!("Feed update job done: {}. Updated {} posts", msg.feed_id, fetched);
     state_sender.send(FeedUpdateJobState::Success { fetched })?;
     Ok(())
 }

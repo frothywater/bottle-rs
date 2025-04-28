@@ -9,6 +9,7 @@ use bottle_panda::PandaCache;
 use bottle_pixiv::PixivCache;
 use bottle_twitter::TwitterCache;
 use bottle_yandere::YandereCache;
+use twitter_client::Transaction;
 
 use crate::background_job::*;
 
@@ -44,4 +45,7 @@ pub struct AppState {
     /// Panda download job state: gallery -> state receiver
     pub panda_download_state_map: PandaDownloadJobStateReceiverMap,
     pub panda_gallery_title_map: Arc<RwLock<HashMap<PandaGalleryID, String>>>,
+
+    /// Twitter x-client-trasaction-id
+    pub twitter_transaction: Arc<RwLock<Option<Transaction>>>,
 }

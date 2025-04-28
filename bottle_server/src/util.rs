@@ -9,6 +9,7 @@ use bottle_twitter::*;
 use bottle_yandere::*;
 
 use crate::{
+    background_job::FeedUpdateMessage,
     error::ServerError,
     payload::{FeedParams, NewFeedRequest},
 };
@@ -67,9 +68,7 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
                 conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
             }
             if self.enable_wal {
-                conn.batch_execute(
-                    "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;",
-                )?;
+                conn.batch_execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
             }
             Ok(())
         })()
@@ -223,12 +222,13 @@ impl FeedWrapper {
         }
     }
 
-    pub fn get_context(&self, db: Database) -> BottleResult<FeedContextWrapper> {
+    pub fn get_context(&self, db: Database, msg: &FeedUpdateMessage) -> BottleResult<FeedContextWrapper> {
         match self {
             Self::Twitter(feed) => {
                 let account = feed.get_account(db)?;
                 let auth = account.auth(db)?;
-                let context = feed.get_fetch_context(db)?;
+                let mut context = feed.get_fetch_context(db)?;
+                context.transaction = Some(msg.twitter_transaction.clone());
                 Ok(FeedContextWrapper::Twitter { auth, context })
             }
             Self::Pixiv(feed) => {

@@ -34,8 +34,9 @@ async fn fetch_twitter_api(
     let db = &mut app_state.pool.get()?;
     let cache_lock = app_state.twitter_cache.clone();
     let cache = &mut cache_lock.write().await;
+    let transaction = app_state.twitter_transaction.clone();
 
-    let response = fetch_posts(db, cache, &payload).await?;
+    let response = fetch_posts(db, cache, &payload, transaction).await?;
     Ok(Json(response))
 }
 
