@@ -1,7 +1,7 @@
 use phf::phf_map;
 
-pub const GRAPHQL_API: &str = "https://twitter.com/i/api/graphql";
-pub const REST_API: &str = "https://api.twitter.com/1.1";
+pub const GRAPHQL_API: &str = "https://x.com/i/api/graphql";
+pub const REST_API: &str = "https://api.x.com/1.1";
 pub const BEARER_TOKEN: &str =
     "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 pub const USER_AGENT: &str =
