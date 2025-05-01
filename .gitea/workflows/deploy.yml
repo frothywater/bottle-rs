@@ -14,13 +14,25 @@ jobs:
       options: --privileged
 
     steps:
-      - name: Install SSH
-        run: apk add --no-cache git openssh bash
+      - name: Install Dependencies
+        run: apk add --no-cache git openssh bash nodejs
 
       - name: Checkout Code
-        run: |
-          git clone ${{ gitea.server_url }}/${{ gitea.repository }}.git .
-          git checkout $GITEA_REF_NAME
+        uses: actions/checkout@v4
+
+      - name: Restore Cargo Cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/docker-cache/cargo-registry
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Restore Rust Build Cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/docker-cache/rust-build
+          key: ${{ runner.os }}-rust-build
+          restore-keys: |
+            ${{ runner.os }}-rust-build-
 
       - name: Build Docker Image
         run: docker build -t bottle-server:latest .
