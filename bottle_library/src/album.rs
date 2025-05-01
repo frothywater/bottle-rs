@@ -151,7 +151,7 @@ impl Album {
         let (works, total_items) = album_work::table
             .inner_join(work::table)
             .filter(album_work::album_id.eq(album_id))
-            .order_by(album_work::position.asc())
+            .order_by(album_work::position.desc())
             .select(work::all_columns)
             .paginate(page, page_size)
             .load_and_count::<model::Work>(conn)?;
