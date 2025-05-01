@@ -19,8 +19,8 @@ jobs:
 
       - name: Checkout Code
         run: |
-          git clone "${GITEA_SERVER_URL}/${GITEA_REPOSITORY}.git" .
-          git checkout ${GITEA_REF_NAME}
+          git clone ${{ gitea.server_url }}/${{ gitea.repository }}.git
+          git checkout $GITEA_REF_NAME
 
       - name: Build Docker Image
         run: docker build -t bottle-server:latest .
