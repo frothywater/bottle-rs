@@ -19,7 +19,7 @@ jobs:
 
       - name: Checkout Code
         run: |
-          git clone ${{ gitea.server_url }}/${{ gitea.repository }}.git
+          git clone ${{ gitea.server_url }}/${{ gitea.repository }}.git .
           git checkout $GITEA_REF_NAME
 
       - name: Build Docker Image
