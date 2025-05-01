@@ -1,0 +1,44 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - public
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    container:
+      image: docker:latest # Alpine-based image with Docker CLI
+      options: --privileged # Required to use Docker inside the container
+
+    steps:
+      - name: Install SSH
+        run: apk add --no-cache openssh
+
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: docker build -t bottle-server:latest .
+
+      - name: Save Docker Image
+        run: docker save bottle-server:latest -o bottle-server.tar
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy Image to Server
+        run: scp bottle-server.tar ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
+
+      - name: Deploy on Server
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            docker load -i /tmp/bottle-server.tar
+            docker restart ${{ secrets.SERVER_CONTAINER }} || true
+          EOF
