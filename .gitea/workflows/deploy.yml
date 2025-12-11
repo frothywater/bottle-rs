@@ -54,4 +54,5 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
             docker load -i /tmp/bottle-server.tar
+            docker service update --force ${{ secrets.SERVER_STACK }} || true
           EOF
