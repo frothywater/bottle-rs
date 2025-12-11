@@ -20,39 +20,39 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set Up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+
+      - name: Get Cargo.lock Hash
+        uses: actions/go-hashfiles@v0.0.1
+        id: get-hash
+        with:
+          patterns: |
+            **/Cargo.lock
+
+      - name: Echo Hash
+        run: echo ${{ steps.get-hash.outputs.hash }}
+
       - name: Restore Cargo Cache
         uses: actions/cache@v3
         with:
           path: /tmp/docker-cache/cargo-registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.get-hash.outputs.hash }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Restore Rust Build Cache
         uses: actions/cache@v3
         with:
           path: /tmp/docker-cache/rust-build
-          key: ${{ runner.os }}-rust-build
+          key: ${{ runner.os }}-rust-build-${{ steps.get-hash.outputs.hash }}
           restore-keys: |
             ${{ runner.os }}-rust-build-
 
       - name: Build Docker Image
         run: docker build -t bottle-server:latest .
 
-      - name: Save Docker Image
-        run: docker save bottle-server:latest -o bottle-server.tar
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Copy Image to Server
-        run: scp -i ~/.ssh/id_rsa bottle-server.tar ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
-
-      - name: Deploy on Server
-        run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-            docker load -i /tmp/bottle-server.tar
-            docker service update --force ${{ secrets.SERVER_STACK }} || true
-          EOF
+      - name: Restart Service
+        run: docker service update --force ${{ secrets.SERVICE_NAME }} || true
