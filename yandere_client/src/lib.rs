@@ -22,7 +22,13 @@ pub async fn fetch_posts(query: &str, page: u32) -> Result<APIResult> {
     };
     let url = Url::parse_with_params(&format!("{}/post.json", BASE_URL), &params)?;
 
-    let response = reqwest::get(url).await?.error_for_status()?;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header("User-Agent", "curl/8.7.0")
+        .send()
+        .await?
+        .error_for_status()?;
     let content = response.text().await?;
 
     log(query, &content).await?;
