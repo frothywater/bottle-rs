@@ -26,16 +26,13 @@ impl From<&client::User> for model::NewTwitterUser {
 }
 
 pub(crate) fn user_view(user: &client::User) -> UserView {
-    UserView {
-        user_id: user.id.to_string(),
-        community: "twitter".to_string(),
-        name: Some(user.name.clone()),
-        username: Some(user.screen_name.clone()),
-        avatar_url: user.profile_image_url_https.clone(),
-        description: Some(user.description.clone()),
-        url: user.url.clone(),
-        ..Default::default()
-    }
+    bottle_util::UserViewBuilder::new(user.id.to_string(), "twitter")
+        .name(Some(user.name.clone()))
+        .username(Some(user.screen_name.clone()))
+        .avatar_url(user.profile_image_url_https.clone())
+        .description(Some(user.description.clone()))
+        .url(user.url.clone())
+        .build()
 }
 
 impl From<&client::Tweet> for model::NewTweet {
@@ -50,17 +47,12 @@ impl From<&client::Tweet> for model::NewTweet {
 }
 
 pub(crate) fn post_view(tweet: &client::Tweet) -> PostView {
-    PostView {
-        post_id: tweet.id.to_string(),
-        community: "twitter".to_string(),
-        user_id: Some(tweet.user.id.to_string()),
-        text: tweet.full_text.clone(),
-        thumbnail_url: None,
-        media_count: Some(tweet.media.len() as i32),
-        created_date: tweet.created_at,
-        added_date: None,
-        ..Default::default()
-    }
+    bottle_util::PostViewBuilder::new(tweet.id.to_string(), "twitter")
+        .user_id(Some(tweet.user.id.to_string()))
+        .text(tweet.full_text.clone())
+        .media_count(Some(tweet.media.len() as i32))
+        .created_date(tweet.created_at)
+        .build()
 }
 
 pub(crate) fn media(tweet: &client::Tweet) -> Vec<model::TwitterMedia> {
@@ -87,16 +79,18 @@ pub(crate) fn media_views(tweet: &client::Tweet) -> Vec<MediaView> {
         .media
         .iter()
         .enumerate()
-        .map(|(page, m)| MediaView {
-            media_id: m.media_key.clone(),
-            community: "twitter".to_string(),
-            post_id: tweet.id.to_string(),
-            page_index: page as i32,
-            url: original_url(m),
-            thumbnail_url: thumbnail_url(m),
-            width: Some(m.original_info.width as i32),
-            height: Some(m.original_info.height as i32),
-            extra: Some(serde_json::json!({"twitter": { "type": m.type_ }})),
+        .map(|(page, m)| {
+            bottle_util::MediaViewBuilder::new(
+                m.media_key.clone(),
+                "twitter",
+                tweet.id.to_string(),
+                page as i32,
+            )
+            .url(original_url(m))
+            .thumbnail_url(thumbnail_url(m))
+            .dimensions(Some(m.original_info.width as i32), Some(m.original_info.height as i32))
+            .extra(Some(serde_json::json!({"twitter": { "type": m.type_ }})))
+            .build()
         })
         .collect()
 }
@@ -158,49 +152,35 @@ impl TryFrom<model::TwitterWatchList> for TwitterFeed {
 
 impl From<model::TwitterUser> for UserView {
     fn from(user: model::TwitterUser) -> Self {
-        UserView {
-            user_id: user.id.to_string(),
-            community: "twitter".to_string(),
-            name: Some(user.name),
-            username: Some(user.username),
-            avatar_url: user.profile_image_url,
-            description: Some(user.description),
-            url: user.url,
-            ..Default::default()
-        }
+        bottle_util::UserViewBuilder::new(user.id.to_string(), "twitter")
+            .name(Some(user.name))
+            .username(Some(user.username))
+            .avatar_url(user.profile_image_url)
+            .description(Some(user.description))
+            .url(user.url)
+            .build()
     }
 }
 
 impl From<model::Tweet> for PostView {
     fn from(tweet: model::Tweet) -> Self {
-        PostView {
-            post_id: tweet.id.to_string(),
-            user_id: Some(tweet.user_id.to_string()),
-            community: "twitter".to_string(),
-            text: tweet.caption,
-            thumbnail_url: None,
-            created_date: tweet.created_date.and_utc(),
-            added_date: Some(tweet.added_date.and_utc()),
-            ..Default::default()
-        }
+        bottle_util::PostViewBuilder::new(tweet.id.to_string(), "twitter")
+            .user_id(Some(tweet.user_id.to_string()))
+            .text(tweet.caption)
+            .created_date_naive(tweet.created_date)
+            .added_date_naive(Some(tweet.added_date))
+            .build()
     }
 }
 
 impl From<model::TwitterMedia> for MediaView {
     fn from(media: model::TwitterMedia) -> Self {
-        let url = media.original_url();
-        let thumbnail_url = media.thumbnail_url();
-        MediaView {
-            media_id: media.id,
-            community: "twitter".to_string(),
-            post_id: media.tweet_id.to_string(),
-            page_index: media.page,
-            url: Some(url),
-            thumbnail_url,
-            width: Some(media.width),
-            height: Some(media.height),
-            extra: Some(serde_json::json!({"twitter": { "type": media.type_ }})),
-        }
+        bottle_util::MediaViewBuilder::new(media.id, "twitter", media.tweet_id.to_string(), media.page)
+            .url(Some(media.original_url()))
+            .thumbnail_url(media.thumbnail_url())
+            .dimensions(Some(media.width), Some(media.height))
+            .extra(Some(serde_json::json!({"twitter": { "type": media.type_ }})))
+            .build()
     }
 }
 

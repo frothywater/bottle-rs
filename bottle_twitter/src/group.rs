@@ -17,56 +17,9 @@ use crate::model;
 
 // MARK: Internal methods for artist grouping
 
-/// Sqlite row for recent posts query grouped by artist.
-#[derive(QueryableByName)]
-struct RecentRow {
-    #[diesel(sql_type = BigInt)]
-    user_id: i64,
-    #[diesel(sql_type = BigInt)]
-    post_id: i64,
-    #[diesel(sql_type = BigInt)]
-    post_count: i64,
-    #[diesel(sql_type = BigInt)]
-    user_count: i64,
-}
-
-/// Generate query for artist-grouped recent post, with given source post query.
-/// Binds are `page_size`, `offset` and `recent_count`.
-pub(crate) fn grouped_by_user_query(post_query: &str, window_order_clause: &str) -> String {
-    format!(
-        "with posts as materialized (
-                {}
-            ), users as materialized (
-                select *, count() over () as user_count from (
-                    select user_id, count() as post_count
-                    from posts
-                    group by user_id
-                    order by post_count desc
-                ) limit ? offset ?
-            ), recent as materialized (
-                select user_id, id as post_id, rank () over (
-                    partition by user_id
-                    {}
-                ) as rank
-                from posts
-            )
-            select users.user_id, post_id, post_count, user_count from users
-            join recent on recent.user_id = users.user_id
-            where rank <= ?
-            order by post_count desc, users.user_id, rank;",
-        post_query, window_order_clause
-    )
-}
-
 /// Filter media by choosing only media with page indices corresponding to given works.
 pub(crate) fn filter_media_by_works(media: &[model::TwitterMedia], works: &[WorkView]) -> Vec<model::TwitterMedia> {
-    let post_page_set = works
-        .iter()
-        .filter_map(|work| {
-            let post_id = work.post_id.as_ref()?.parse::<i64>().ok()?;
-            Some((post_id, work.page_index))
-        })
-        .collect::<HashSet<_>>();
+    let post_page_set = bottle_util::group::create_post_page_set(works, |post_id| post_id.parse::<i64>().ok());
     media
         .iter()
         .filter(|m| post_page_set.contains(&(m.tweet_id, Some(m.page))) || post_page_set.contains(&(m.tweet_id, None)))
@@ -85,20 +38,12 @@ pub(crate) fn posts_grouped_by_user<Q: QueryFragment<Sqlite>>(
 ) -> Result<GeneralResponse> {
     use bottle_core::schema::{tweet, twitter_media, twitter_user};
 
-    // 1. Fetch row records from database
-    let query = query
-        .bind::<BigInt, _>(page_size)
-        .bind::<BigInt, _>(page * page_size)
-        .bind::<BigInt, _>(recent_count);
-    let records = query.load::<RecentRow>(db)?;
+    // 1. Execute grouped query
+    let (records, user_count, user_to_post_count) = 
+        bottle_util::group::execute_grouped_query(db, query, page, page_size, recent_count)?;
 
     let user_ids = records.iter().map(|r| r.user_id);
     let post_ids = records.iter().map(|r| r.post_id);
-    let user_count = records.first().map(|r| r.user_count).unwrap_or(0);
-    let user_to_post_count = records
-        .iter()
-        .map(|r| (r.user_id.to_string(), r.post_count))
-        .collect::<HashMap<_, _>>();
 
     // 2. Fetch associated users
     let users = twitter_user::table

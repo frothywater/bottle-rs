@@ -435,7 +435,7 @@ impl Feed for TwitterFeed {
         recent_count: i64,
     ) -> Result<GeneralResponse> {
         use diesel::dsl::sql_query;
-        let query = sql_query(group::grouped_by_user_query(
+        let query = sql_query(bottle_util::group::grouped_by_user_query(
             "select distinct tweet.* from tweet
             join work on tweet.id = work.post_id_int
             where work.source = 'twitter'",
@@ -470,7 +470,7 @@ impl Feed for TwitterFeed {
         recent_count: i64,
     ) -> Result<GeneralResponse> {
         use diesel::{dsl::sql_query, sql_types::Integer};
-        let query = sql_query(group::grouped_by_user_query(
+        let query = sql_query(bottle_util::group::grouped_by_user_query(
             "select tweet.*, sort_index from twitter_watch_list_tweet
             join tweet on tweet_id = tweet.id
             where watch_list_id = ?",
