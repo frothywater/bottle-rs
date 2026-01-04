@@ -176,58 +176,37 @@ impl Feed for TwitterFeed {
 
     fn save(&self, db: Database, fetched: &Self::FetchResult, ctx: &Self::FetchContext) -> Result<SaveResult> {
         use bottle_core::schema::{
-            tweet, twitter_media, twitter_user, twitter_watch_list, twitter_watch_list_history,
-            twitter_watch_list_tweet,
+            tweet, twitter_media, twitter_user, twitter_watch_list_history, twitter_watch_list_tweet,
         };
 
-        // (a) If response is empty, we should stop updating
-        if fetched.tweets.is_empty() {
-            let mut reached_end = false;
-            // (a*) If we are fetching backward, this means the feed reached end and we should mark it
-            if matches!(ctx.direction, Direction::Backward) {
-                diesel::update(twitter_watch_list::table.find(self.id))
-                    .set(twitter_watch_list::reached_end.eq(true))
-                    .execute(db)?;
-                reached_end = true;
-                tracing::info!("Set twitter feed {} as reached end", self.id);
+        // Check if response is empty
+        if let Some(result) = bottle_util::feed_save::check_empty_fetch(
+            fetched.tweets.is_empty(),
+            matches!(ctx.direction, Direction::Backward),
+        ) {
+            if result.reached_end {
+                self.mark_reached_end(db)?;
             }
-            return Ok(SaveResult {
-                post_ids: vec![],
-                should_stop: true,
-                reached_end,
-            });
+            return Ok(result);
         }
 
-        // 1. Filter out tweets already exist in database
-        let fetched_ids = fetched.tweets.iter().map(|t| t.id as i64).collect::<Vec<_>>();
-        let existing_ids = twitter_watch_list_tweet::table
-            .filter(twitter_watch_list_tweet::watch_list_id.eq(self.id))
-            .filter(twitter_watch_list_tweet::tweet_id.eq_any(&fetched_ids))
-            .select(twitter_watch_list_tweet::tweet_id)
-            .load::<i64>(db)?;
-        let existing_ids = existing_ids.into_iter().map(|id| id as u64).collect::<HashSet<_>>();
-        let tweets = fetched.tweets.iter().filter(|t| !existing_ids.contains(&t.id));
+        // Filter out tweets that already exist in database
+        let fetched_ids: Vec<i64> = fetched.tweets.iter().map(|t| t.id as i64).collect();
+        let existing_ids = self.get_existing_tweet_ids(db, &fetched_ids)?;
+        let tweets: Vec<_> = fetched.tweets.iter().filter(|t| !existing_ids.contains(&t.id)).collect();
 
-        // (b) If all tweets already exist in database, we should stop updating
-        if tweets.clone().count() == 0 {
-            return Ok(SaveResult {
-                post_ids: vec![],
-                should_stop: true,
-                reached_end: false,
-            });
+        // Check if all tweets already exist
+        if let Some(result) = bottle_util::feed_save::all_exist(tweets.len(), !existing_ids.is_empty()) {
+            return Ok(result);
         }
 
-        // 2. Prepare data for insertion
-        // User, Tweet, Media
-        let new_users = tweets
-            .clone()
-            .map(|t| model::NewTwitterUser::from(&t.user))
-            .collect::<Vec<_>>();
-        let new_tweets = tweets.clone().map(model::NewTweet::from).collect::<Vec<_>>();
-        let media = tweets.clone().flat_map(util::media).collect::<Vec<_>>();
+        // Prepare data for insertion
+        let new_users: Vec<_> = tweets.iter().map(|t| model::NewTwitterUser::from(&t.user)).collect();
+        let new_tweets: Vec<_> = tweets.iter().map(|t| model::NewTweet::from(*t)).collect();
+        let media: Vec<_> = tweets.iter().flat_map(|t| util::media(t)).collect();
 
-        // WatchListTweet
-        let watch_list_tweets = fetched
+        // Prepare watch list tweets with sort indices
+        let watch_list_tweets: Vec<_> = fetched
             .tweets
             .iter()
             .zip(fetched.sort_indices.iter())
@@ -238,26 +217,24 @@ impl Feed for TwitterFeed {
                 sort_index: Some(*sort_index as i64),
                 stale: false,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        // WatchListHistory
-        let tweet_ids = tweets.clone().map(|t| t.id.to_string()).collect::<Vec<_>>();
+        // Prepare history record
+        let tweet_ids: Vec<_> = tweets.iter().map(|t| t.id.to_string()).collect();
         let (top_cursor, bottom_cursor) = (fetched.top_cursor(), fetched.bottom_cursor());
         let history = model::NewTwitterWatchListHistory {
             watch_list_id: self.id,
             ids: tweet_ids.join(", "),
-            count: tweets.clone().count() as i32,
+            count: tweets.len() as i32,
             top_cursor: top_cursor.map(|c| c.value().to_string()),
             top_sort_index: top_cursor.map(|c| c.sort_index() as i64),
             bottom_cursor: bottom_cursor.map(|c| c.value().to_string()),
             bottom_sort_index: bottom_cursor.map(|c| c.sort_index() as i64),
         };
 
-        // 3. Insert data
+        // Insert all data in a transaction
         db.transaction(|conn| -> Result<()> {
-            diesel::insert_into(twitter_user::table)
-                .values(&new_users)
-                .execute(conn)?;
+            diesel::insert_into(twitter_user::table).values(&new_users).execute(conn)?;
             diesel::insert_into(tweet::table).values(&new_tweets).execute(conn)?;
             diesel::insert_into(twitter_media::table).values(&media).execute(conn)?;
             diesel::insert_into(twitter_watch_list_tweet::table)
@@ -269,26 +246,12 @@ impl Feed for TwitterFeed {
             Ok(())
         })?;
 
-        // TODO: If first fetch limit is reached, mark feed as reached end
-
         tracing::info!("Saved tweets for twitter feed {}: {}", self.id, history.ids);
-        Ok(SaveResult {
-            post_ids: tweet_ids,
-            should_stop: !existing_ids.is_empty(),
-            reached_end: false,
-        })
-    }
-
-    fn handle_before_update(&self, _db: Database) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn handle_after_update<'a>(
-        &self,
-        _db: Database,
-        _save_results: impl IntoIterator<Item = &'a SaveResult>,
-    ) -> Result<()> {
-        unimplemented!()
+        Ok(bottle_util::feed_save::create_save_result(
+            tweet_ids,
+            !existing_ids.is_empty(),
+            false,
+        ))
     }
 
     fn posts(&self, db: Database, page: i64, page_size: i64) -> Result<GeneralResponse> {
@@ -501,6 +464,27 @@ impl Feed for TwitterFeed {
 // MARK: Helpers
 
 impl TwitterFeed {
+    /// Helper: Check existing tweets in the database for this feed
+    fn get_existing_tweet_ids(&self, db: Database, fetched_ids: &[i64]) -> Result<HashSet<u64>> {
+        use bottle_core::schema::twitter_watch_list_tweet;
+        let existing_ids = twitter_watch_list_tweet::table
+            .filter(twitter_watch_list_tweet::watch_list_id.eq(self.id))
+            .filter(twitter_watch_list_tweet::tweet_id.eq_any(fetched_ids))
+            .select(twitter_watch_list_tweet::tweet_id)
+            .load::<i64>(db)?;
+        Ok(existing_ids.into_iter().map(|id| id as u64).collect())
+    }
+
+    /// Helper: Mark feed as reached end
+    fn mark_reached_end(&self, db: Database) -> Result<()> {
+        use bottle_core::schema::twitter_watch_list;
+        diesel::update(twitter_watch_list::table.find(self.id))
+            .set(twitter_watch_list::reached_end.eq(true))
+            .execute(db)?;
+        tracing::info!("Set twitter feed {} as reached end", self.id);
+        Ok(())
+    }
+
     fn top_cursor(&self, db: Database) -> Result<Option<String>> {
         use bottle_core::schema::twitter_watch_list_history::dsl::*;
         let result = twitter_watch_list_history

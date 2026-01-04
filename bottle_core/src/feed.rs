@@ -137,7 +137,9 @@ pub trait Feed {
     fn modify(&mut self, db: Database, info: &FeedInfo) -> Result<FeedView>;
 
     /// Callback before fetching posts.
-    fn handle_before_update(&self, db: Database) -> Result<()>;
+    fn handle_before_update(&self, _db: Database) -> Result<()> {
+        Ok(())
+    }
     /// Get the account of the feed.
     fn get_account(&self, db: Database) -> Result<Self::Account>;
     /// Get the context of the feed.
@@ -149,9 +151,11 @@ pub trait Feed {
     /// Callback after fetching posts, with the save results.
     fn handle_after_update<'a>(
         &self,
-        db: Database,
-        save_results: impl IntoIterator<Item = &'a SaveResult>,
-    ) -> Result<()>;
+        _db: Database,
+        _save_results: impl IntoIterator<Item = &'a SaveResult>,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     /// Get all the posts of the feed in the database.
     fn posts(&self, db: Database, page: i64, page_size: i64) -> Result<GeneralResponse>;
