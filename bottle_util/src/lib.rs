@@ -6,6 +6,8 @@ pub mod group;
 pub mod iso8601;
 pub mod macros;
 pub mod parsing;
+pub mod registry;
+pub mod repository;
 
 pub use conversions::*;
 pub use parsing::*;
