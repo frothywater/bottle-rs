@@ -48,14 +48,11 @@ impl From<&client::User> for model::NewPixivUser {
 }
 
 pub(crate) fn user_view(user: &client::User) -> UserView {
-    UserView {
-        user_id: user.id.to_string(),
-        community: "pixiv".to_string(),
-        name: Some(user.name.clone()),
-        username: Some(user.username.clone()),
-        avatar_url: user.profile_image_urls.medium.clone(),
-        ..Default::default()
-    }
+    bottle_util::UserViewBuilder::new(user.id.to_string(), "pixiv")
+        .name(Some(user.name.clone()))
+        .username(Some(user.username.clone()))
+        .avatar_url(user.profile_image_urls.medium.clone())
+        .build()
 }
 
 impl From<&client::Illust> for model::NewPixivIllust {
@@ -88,18 +85,15 @@ pub(crate) fn illust_extra(illust: &client::Illust) -> PixivIllustExtra {
 }
 
 pub(crate) fn post_view(illust: &client::Illust) -> PostView {
-    PostView {
-        post_id: illust.id.to_string(),
-        community: "pixiv".to_string(),
-        user_id: Some(illust.user.id.to_string()),
-        text: illust.title.clone(),
-        thumbnail_url: Some(illust.image_urls.large.clone()),
-        tags: Some(illust.tags.iter().map(|tag| tag.name.clone()).collect()),
-        media_count: Some(illust.page_count as i32),
-        created_date: illust.create_date,
-        added_date: None,
-        extra: Some(illust_extra(illust).into()),
-    }
+    bottle_util::PostViewBuilder::new(illust.id.to_string(), "pixiv")
+        .user_id(Some(illust.user.id.to_string()))
+        .text(illust.title.clone())
+        .thumbnail_url(Some(illust.image_urls.large.clone()))
+        .tags(Some(illust.tags.iter().map(|tag| tag.name.clone()).collect()))
+        .media_count(Some(illust.page_count as i32))
+        .created_date(illust.create_date)
+        .extra(Some(illust_extra(illust).into()))
+        .build()
 }
 
 pub(crate) fn media(illust: &client::Illust) -> Vec<model::PixivMedia> {
@@ -209,16 +203,13 @@ impl TryFrom<model::PixivWatchList> for PixivFeed {
 
 impl From<model::PixivUser> for UserView {
     fn from(user: model::PixivUser) -> Self {
-        UserView {
-            user_id: user.id.to_string(),
-            community: "pixiv".to_string(),
-            name: Some(user.name),
-            username: Some(user.username),
-            avatar_url: user.profile_image_url,
-            description: Some(user.description),
-            url: user.url,
-            ..Default::default()
-        }
+        bottle_util::UserViewBuilder::new(user.id.to_string(), "pixiv")
+            .name(Some(user.name))
+            .username(Some(user.username))
+            .avatar_url(user.profile_image_url)
+            .description(Some(user.description))
+            .url(user.url)
+            .build()
     }
 }
 
@@ -235,34 +226,30 @@ impl model::PixivIllust {
     }
 
     pub fn post_view(&self, tags: Vec<String>) -> PostView {
-        PostView {
-            post_id: self.id.to_string(),
-            user_id: Some(self.user_id.to_string()),
-            community: "pixiv".to_string(),
-            text: self.title.clone(),
-            thumbnail_url: Some(self.thumbnail_url.clone()),
-            tags: Some(tags),
-            created_date: self.created_date.and_utc(),
-            added_date: Some(self.added_date.and_utc()),
-            extra: Some(self.illust_extra().into()),
-            ..Default::default()
-        }
+        bottle_util::PostViewBuilder::new(self.id.to_string(), "pixiv")
+            .user_id(Some(self.user_id.to_string()))
+            .text(self.title.clone())
+            .thumbnail_url(Some(self.thumbnail_url.clone()))
+            .tags(Some(tags))
+            .created_date_naive(self.created_date)
+            .added_date_naive(Some(self.added_date))
+            .extra(Some(self.illust_extra().into()))
+            .build()
     }
 }
 
 impl From<model::PixivMedia> for MediaView {
     fn from(media: model::PixivMedia) -> Self {
-        MediaView {
-            media_id: format!("{}_{}", media.illust_id, media.page),
-            community: "pixiv".to_string(),
-            post_id: media.illust_id.to_string(),
-            page_index: media.page,
-            url: Some(media.original_url),
-            width: Some(media.width),
-            height: Some(media.height),
-            thumbnail_url: Some(media.medium_url),
-            ..Default::default()
-        }
+        bottle_util::MediaViewBuilder::new(
+            format!("{}_{}", media.illust_id, media.page),
+            "pixiv",
+            media.illust_id.to_string(),
+            media.page,
+        )
+        .url(Some(media.original_url))
+        .dimensions(Some(media.width), Some(media.height))
+        .thumbnail_url(Some(media.medium_url))
+        .build()
     }
 }
 
