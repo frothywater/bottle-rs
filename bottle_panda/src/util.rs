@@ -45,13 +45,10 @@ pub(crate) fn get_artist_views(db: Database, post_ids: impl Iterator<Item = i64>
 
 pub(crate) fn artist_view(artist: impl Into<String>) -> UserView {
     let artist = artist.into();
-    UserView {
-        user_id: artist.clone(),
-        name: Some(artist.clone()),
-        tag_name: Some(format!("artist:{}", artist)),
-        community: "panda".to_string(),
-        ..Default::default()
-    }
+    bottle_util::UserViewBuilder::new(artist.clone(), "panda")
+        .name(Some(artist.clone()))
+        .tag_name(Some(format!("artist:{}", artist)))
+        .build()
 }
 
 pub(crate) fn tags(gallery: &Gallery) -> Vec<model::PandaTag> {
@@ -101,18 +98,14 @@ pub(crate) fn gallery_extra(gallery: &Gallery) -> PandaGalleryExtra {
 }
 
 pub(crate) fn post_view(gallery: &Gallery) -> PostView {
-    PostView {
-        post_id: gallery.gid.to_string(),
-        user_id: None,
-        community: "panda".to_string(),
-        text: gallery.title.clone(),
-        media_count: Some(gallery.image_count as i32),
-        thumbnail_url: Some(gallery.thumbnail_url.clone()),
-        tags: Some(gallery.tags.iter().map(|tag| tag.to_string()).collect()),
-        created_date: gallery.posted_date,
-        added_date: None,
-        extra: Some(gallery_extra(gallery).into()),
-    }
+    bottle_util::PostViewBuilder::new(gallery.gid.to_string(), "panda")
+        .text(gallery.title.clone())
+        .media_count(Some(gallery.image_count as i32))
+        .thumbnail_url(Some(gallery.thumbnail_url.clone()))
+        .tags(Some(gallery.tags.iter().map(|tag| tag.to_string()).collect()))
+        .created_date(gallery.posted_date)
+        .extra(Some(gallery_extra(gallery).into()))
+        .build()
 }
 
 impl From<&Gallery> for model::NewPandaGallery {
@@ -208,18 +201,15 @@ impl model::PandaGallery {
     }
 
     pub(crate) fn post_view(&self, tags: Vec<String>) -> PostView {
-        PostView {
-            post_id: self.id.to_string(),
-            user_id: None,
-            community: "panda".to_string(),
-            text: self.title.clone(),
-            media_count: Some(self.media_count),
-            thumbnail_url: Some(self.thumbnail_url.clone()),
-            tags: Some(tags),
-            created_date: self.created_date.and_utc(),
-            added_date: Some(self.added_date.and_utc()),
-            extra: Some(self.gallery_extra().into()),
-        }
+        bottle_util::PostViewBuilder::new(self.id.to_string(), "panda")
+            .text(self.title.clone())
+            .media_count(Some(self.media_count))
+            .thumbnail_url(Some(self.thumbnail_url.clone()))
+            .tags(Some(tags))
+            .created_date_naive(self.created_date)
+            .added_date_naive(Some(self.added_date))
+            .extra(Some(self.gallery_extra().into()))
+            .build()
     }
 
     pub(crate) fn has_detail(&self) -> bool {
@@ -233,17 +223,17 @@ impl model::PandaGallery {
 
 impl From<model::PandaMedia> for MediaView {
     fn from(media: model::PandaMedia) -> Self {
-        Self {
-            media_id: media.id(),
-            community: "panda".to_string(),
-            post_id: media.gallery_id.to_string(),
-            page_index: media.media_index,
-            url: media.url,
-            width: media.width,
-            height: media.height,
-            thumbnail_url: media.thumbnail_url,
-            extra: Some(serde_json::json!({"panda": {"token": media.token}})),
-        }
+        bottle_util::MediaViewBuilder::new(
+            media.id(),
+            "panda",
+            media.gallery_id.to_string(),
+            media.media_index,
+        )
+        .url(media.url)
+        .dimensions(media.width, media.height)
+        .thumbnail_url(media.thumbnail_url)
+        .extra(Some(serde_json::json!({"panda": {"token": media.token}})))
+        .build()
     }
 }
 

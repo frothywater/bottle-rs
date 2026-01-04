@@ -568,7 +568,7 @@ impl Feed for PixivFeed {
         recent_count: i64,
     ) -> Result<GeneralResponse> {
         use diesel::dsl::sql_query;
-        let query = sql_query(group::grouped_by_user_query(
+        let query = sql_query(bottle_util::group::grouped_by_user_query(
             "select distinct pixiv_illust.* from pixiv_illust
             join work on pixiv_illust.id = work.post_id_int
             where work.source = 'pixiv'",
@@ -603,7 +603,7 @@ impl Feed for PixivFeed {
         recent_count: i64,
     ) -> Result<GeneralResponse> {
         use diesel::{dsl::sql_query, sql_types::Integer};
-        let query = sql_query(group::grouped_by_user_query(
+        let query = sql_query(bottle_util::group::grouped_by_user_query(
             "select pixiv_illust.*, sort_index from pixiv_watch_list_illust
             join pixiv_illust on illust_id = pixiv_illust.id
             where watch_list_id = ?",

@@ -15,13 +15,10 @@ use crate::{
 
 pub(crate) fn artist_view(artist: impl Into<String>) -> UserView {
     let artist = artist.into();
-    UserView {
-        user_id: artist.clone(),
-        name: Some(artist.replace("_", " ")),
-        tag_name: Some(artist),
-        community: "yandere".to_string(),
-        ..Default::default()
-    }
+    bottle_util::UserViewBuilder::new(artist.clone(), "yandere")
+        .name(Some(artist.replace("_", " ")))
+        .tag_name(Some(artist))
+        .build()
 }
 
 pub(crate) fn get_artist_views(db: Database, post_ids: impl Iterator<Item = i64>) -> Result<Vec<UserView>> {
@@ -73,32 +70,27 @@ pub(crate) fn post_extra_result(post: &client::PostResult) -> YanderePostExtra {
 }
 
 pub(crate) fn post_view(post: &client::PostResult) -> PostView {
-    PostView {
-        post_id: post.id.to_string(),
-        community: "yandere".to_string(),
-        user_id: None,
-        text: post.source.clone(),
-        thumbnail_url: Some(post.sample_url.clone()),
-        media_count: Some(1),
-        tags: Some(post.tags.split_whitespace().map(|tag| tag.to_string()).collect()),
-        created_date: post.created_at,
-        added_date: None,
-        extra: Some(post_extra_result(post).into()),
-    }
+    bottle_util::PostViewBuilder::new(post.id.to_string(), "yandere")
+        .text(post.source.clone())
+        .thumbnail_url(Some(post.sample_url.clone()))
+        .media_count(Some(1))
+        .tags(Some(post.tags.split_whitespace().map(|tag| tag.to_string()).collect()))
+        .created_date(post.created_at)
+        .extra(Some(post_extra_result(post).into()))
+        .build()
 }
 
 pub(crate) fn media_view(post: &client::PostResult) -> MediaView {
-    MediaView {
-        media_id: post.id.to_string(),
-        community: "yandere".to_string(),
-        post_id: post.id.to_string(),
-        page_index: 0,
-        url: Some(post.file_url.clone()),
-        width: Some(post.width as i32),
-        height: Some(post.height as i32),
-        thumbnail_url: Some(post.sample_url.clone()),
-        ..Default::default()
-    }
+    bottle_util::MediaViewBuilder::new(
+        post.id.to_string(),
+        "yandere",
+        post.id.to_string(),
+        0,
+    )
+    .url(Some(post.file_url.clone()))
+    .dimensions(Some(post.width as i32), Some(post.height as i32))
+    .thumbnail_url(Some(post.sample_url.clone()))
+    .build()
 }
 
 pub(crate) fn post_tags(post: &client::PostResult) -> Vec<model::YanderePostTag> {
@@ -151,34 +143,30 @@ pub(crate) fn post_extra(post: &model::YanderePost) -> YanderePostExtra {
 
 impl From<&model::YanderePost> for PostView {
     fn from(post: &model::YanderePost) -> PostView {
-        PostView {
-            post_id: post.id.to_string(),
-            user_id: None,
-            community: "yandere".to_string(),
-            text: post.source.clone(),
-            thumbnail_url: Some(post.thumbnail_url.clone()),
-            media_count: Some(1),
-            tags: Some(post.tags.split_whitespace().map(|tag| tag.to_string()).collect()),
-            created_date: post.created_date.and_utc(),
-            added_date: Some(post.added_date.and_utc()),
-            extra: Some(post_extra(post).into()),
-        }
+        bottle_util::PostViewBuilder::new(post.id.to_string(), "yandere")
+            .text(post.source.clone())
+            .thumbnail_url(Some(post.thumbnail_url.clone()))
+            .media_count(Some(1))
+            .tags(Some(post.tags.split_whitespace().map(|tag| tag.to_string()).collect()))
+            .created_date_naive(post.created_date)
+            .added_date_naive(Some(post.added_date))
+            .extra(Some(post_extra(post).into()))
+            .build()
     }
 }
 
 impl From<&model::YanderePost> for MediaView {
     fn from(post: &model::YanderePost) -> Self {
-        MediaView {
-            media_id: post.id.to_string(),
-            community: "yandere".to_string(),
-            post_id: post.id.to_string(),
-            page_index: 0,
-            url: Some(post.url.clone()),
-            width: Some(post.width),
-            height: Some(post.height),
-            thumbnail_url: Some(post.thumbnail_url.clone()),
-            ..Default::default()
-        }
+        bottle_util::MediaViewBuilder::new(
+            post.id.to_string(),
+            "yandere",
+            post.id.to_string(),
+            0,
+        )
+        .url(Some(post.url.clone()))
+        .dimensions(Some(post.width), Some(post.height))
+        .thumbnail_url(Some(post.thumbnail_url.clone()))
+        .build()
     }
 }
 

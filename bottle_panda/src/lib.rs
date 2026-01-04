@@ -5,8 +5,10 @@ pub mod download;
 mod feed;
 mod group;
 mod model;
+pub mod repository;
 mod util;
 
 pub use cache::*;
 pub use community::*;
 pub use feed::*;
+pub use repository::*;
