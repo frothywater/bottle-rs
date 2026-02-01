@@ -6,6 +6,7 @@ use bottle_core::{Database, Result};
 use panda_client::{Gallery, GalleryDetail, ImagePreview, ImageResult};
 
 use crate::model;
+use crate::util;
 
 #[derive(Debug, Clone, Default)]
 pub struct PandaCache {
@@ -27,7 +28,7 @@ impl PandaCache {
 }
 
 pub(crate) fn get_gallery(db: Database, cache: &PandaCache, post_id: i64) -> Result<Option<model::PandaGallery>> {
-    use bottle_core::schema::panda_gallery;
+    use bottle_core::schema::{panda_gallery, panda_gallery_tag, panda_tag};
 
     // 1. Try to get the post from database
     let mut gallery = panda_gallery::table
@@ -39,27 +40,68 @@ pub(crate) fn get_gallery(db: Database, cache: &PandaCache, post_id: i64) -> Res
     if gallery.is_none() {
         if let Some(g) = cache.galleries.get(&(post_id as u64)) {
             let new_gallery = model::NewPandaGallery::from(g);
-            gallery = Some(
-                diesel::insert_into(panda_gallery::table)
-                    .values(&new_gallery)
-                    .returning(model::PandaGallery::as_returning())
-                    .get_result(db)?,
-            );
-            tracing::info!("Added panda gallery {} from cache", post_id)
+            let tags = util::tags(g);
+            let gallery_tags = util::gallery_tags(g);
+
+            gallery = db.transaction(|conn| -> Result<Option<model::PandaGallery>> {
+                let result = Some(
+                    diesel::insert_into(panda_gallery::table)
+                        .values(&new_gallery)
+                        .returning(model::PandaGallery::as_returning())
+                        .get_result(conn)?,
+                );
+                diesel::insert_into(panda_tag::table).values(&tags).execute(conn)?;
+                diesel::insert_into(panda_gallery_tag::table)
+                    .values(&gallery_tags)
+                    .execute(conn)?;
+                Ok(result)
+            })?;
+
+            tracing::info!("Added panda gallery {} from cache with {} tags", post_id, tags.len())
         }
     }
 
-    // 3. If found, try to update the post from entity cache
+    // 3. If found, try to update the post detail from entity cache (only if no detail exists yet)
     if gallery.is_some() {
-        if let Some(detail) = cache.gallery_details.get(&(post_id as u64)) {
-            let update = model::PandaGalleryUpdate::from(detail);
-            gallery = Some(
-                diesel::update(panda_gallery::table.filter(panda_gallery::id.eq(post_id)))
-                    .set(&update)
-                    .returning(model::PandaGallery::as_returning())
-                    .get_result(db)?,
-            );
-            tracing::info!("Updated panda gallery {} from cache", post_id)
+        let needs_detail = gallery.as_ref().map(|g| !g.has_detail()).unwrap_or(false);
+        if needs_detail {
+            if let Some(detail) = cache.gallery_details.get(&(post_id as u64)) {
+                let update = model::PandaGalleryUpdate::from(detail);
+                gallery = Some(
+                    diesel::update(panda_gallery::table.filter(panda_gallery::id.eq(post_id)))
+                        .set(&update)
+                        .returning(model::PandaGallery::as_returning())
+                        .get_result(db)?,
+                );
+                tracing::info!("Updated panda gallery {} detail from cache", post_id)
+            }
+        }
+
+        // 3.1. Also ensure tags are saved if they're missing
+        let existing_tag_count: i64 = panda_gallery_tag::table
+            .filter(panda_gallery_tag::gallery_id.eq(post_id))
+            .count()
+            .get_result(db)?;
+
+        if existing_tag_count == 0 {
+            if let Some(g) = cache.galleries.get(&(post_id as u64)) {
+                let tags = util::tags(g);
+                let gallery_tags = util::gallery_tags(g);
+
+                db.transaction(|conn| -> Result<()> {
+                    diesel::insert_into(panda_tag::table).values(&tags).execute(conn)?;
+                    diesel::insert_into(panda_gallery_tag::table)
+                        .values(&gallery_tags)
+                        .execute(conn)?;
+                    Ok(())
+                })?;
+
+                tracing::info!(
+                    "Added {} missing tags for panda gallery {} from cache",
+                    tags.len(),
+                    post_id
+                );
+            }
         }
     }
 
